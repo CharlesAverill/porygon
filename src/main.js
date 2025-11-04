@@ -1,30 +1,15 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import porygonUrl from './porygon.glb?url';
+import porygonUrl from '../static/porygon.glb?url';
+import { sceneSetup } from './scene';
 
-const scene = new THREE.Scene();
-
-// Camera
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(0.2, 4, 11);
-
-// Renderer
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-document.body.appendChild(renderer.domElement);
+const [scene, camera, renderer] = sceneSetup();
 
 // Controls
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
-
-// Lighting
-const directionalLight = new THREE.DirectionalLight(0xffffff, 3);
-directionalLight.position.set(1, 1, 2);
-scene.add(directionalLight);
-scene.add(new THREE.AmbientLight(0xffffff, 1));
-
 
 // Animation system
 const loader = new GLTFLoader();
@@ -75,6 +60,14 @@ style.textContent = `
 document.head.appendChild(style);
 buttonContainer.classList.add('animation-buttons');
 
+let shinyButton;
+let isShiny;
+function setupShiny() {
+  let val = Math.random();
+  isShiny = !(val < 0.1); // this will be inverted by the click below
+  shinyButton.click();
+}
+
 // Load model
 loader.load(
   porygonUrl,
@@ -84,9 +77,15 @@ loader.load(
 
     let shinyBodyMat;
     let shinyEyeMat;
+    let bodyMat;
+    let eyeMat;
     gltf.parser.getDependencies( 'material' ).then( ( materials ) => {
       shinyBodyMat = materials.find(m => m.name === 'BodyShiny');
       shinyEyeMat = materials.find(m => m.name === 'EyeShiny');
+      bodyMat = materials.find(m => m.name === 'BodyTexture');
+      eyeMat = materials.find(m => m.name === 'EyeTexture');
+
+      setupShiny();
     } );
     model.children = model.children.filter(c => c.name !== "ShinyMaterials");
 
@@ -131,7 +130,7 @@ loader.load(
     }
 
     // --- MATERIAL SWAP BUTTON ---
-    const shinyButton = document.createElement('button');
+    shinyButton = document.createElement('button');
     shinyButton.textContent = 'Toggle Shiny';
     shinyButton.style.display = 'block';
     shinyButton.style.marginTop = '10px';
@@ -142,10 +141,6 @@ loader.load(
     shinyButton.style.background = '#fff';
     buttonContainer.appendChild(shinyButton);
 
-    let isShiny = false;
-    const bodyMat = gltf.materials?.find(m => m.name === 'BodyTexture');
-    const eyeMat = gltf.materials?.find(m => m.name === 'EyeTexture');
-
     shinyButton.addEventListener('click', () => {
       isShiny = !isShiny;
 
@@ -154,13 +149,10 @@ loader.load(
         const mat = child.material;
         if (!mat) return; // safety check
 
-        if (isShiny) {
-          if (mat.name === 'BodyTexture' && shinyBodyMat) child.material = shinyBodyMat;
-          if (mat.name === 'EyeTexture' && shinyEyeMat) child.material = shinyEyeMat;
-        } else {
-          if (mat.name === 'BodyShinyTexture' && bodyMat) child.material = bodyMat;
-          if (mat.name === 'EyeShinyTexture' && eyeMat) child.material = eyeMat;
-        }
+        let newbody = isShiny ? shinyBodyMat : bodyMat;
+        let neweye = isShiny ? shinyEyeMat : eyeMat;
+        if (mat.name.includes("Body") && newbody) child.material = newbody;
+        if (mat.name.includes("Eye") && neweye) child.material = neweye;
       });
     });
 
