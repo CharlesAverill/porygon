@@ -18,47 +18,7 @@ let actions = {};
 let activeAction = null;
 
 // --- Create button container ---
-const buttonContainer = document.createElement('div');
-buttonContainer.style.position = 'absolute';
-buttonContainer.style.left = '10px';
-buttonContainer.style.top = '50%';
-buttonContainer.style.transform = 'translateY(-50%)';
-buttonContainer.style.display = 'flex';
-buttonContainer.style.flexDirection = 'column';
-buttonContainer.style.gap = '6px';
-buttonContainer.style.zIndex = '10';
-buttonContainer.style.padding = '6px';
-buttonContainer.style.background = 'rgba(255, 255, 255, 0.15)';
-buttonContainer.style.backdropFilter = 'blur(6px)';
-buttonContainer.style.borderRadius = '10px';
-document.body.appendChild(buttonContainer);
-
-// Responsive layout: bottom grid on mobile
-const style = document.createElement('style');
-style.textContent = `
-@media (max-width: 768px) {
-  div.animation-buttons {
-    flex-direction: row !important;
-    flex-wrap: wrap;
-    justify-content: center;
-    left: 0 !important;
-    right: 0 !important;
-    top: auto !important;
-    bottom: 0 !important;
-    transform: none !important;
-    background: rgba(0, 0, 0, 0.4) !important;
-    padding: 8px !important;
-    border-radius: 0 !important;
-  }
-  div.animation-buttons button {
-    flex: 1 1 30%;
-    font-size: 12px;
-    margin: 4px;
-  }
-}
-`;
-document.head.appendChild(style);
-buttonContainer.classList.add('animation-buttons');
+const buttonContainer = document.getElementById('buttonContainer');
 
 let shinyButton;
 let isShiny;
@@ -96,17 +56,7 @@ loader.load(
       if (clip.name.includes("pm0137"))
         return;
       const btn = document.createElement('button');
-      btn.textContent = clip.name || 'Unnamed';
-      btn.style.padding = '6px 10px';
-      btn.style.border = 'none';
-      btn.style.borderRadius = '6px';
-      btn.style.cursor = 'pointer';
-      btn.style.background = 'rgba(255, 255, 255, 0.8)';
-      btn.style.fontFamily = 'sans-serif';
-      btn.style.fontWeight = 'bold';
-      btn.style.transition = 'all 0.2s ease';
-      btn.onmouseenter = () => (btn.style.background = 'white');
-      btn.onmouseleave = () => (btn.style.background = 'rgba(255,255,255,0.8)');
+      btn.textContent = clip.name;
       buttonContainer.appendChild(btn);
 
       actions[clip.name] = mixer.clipAction(clip);
@@ -132,13 +82,6 @@ loader.load(
     // --- MATERIAL SWAP BUTTON ---
     shinyButton = document.createElement('button');
     shinyButton.textContent = 'Toggle Shiny';
-    shinyButton.style.display = 'block';
-    shinyButton.style.marginTop = '10px';
-    shinyButton.style.padding = '6px 10px';
-    shinyButton.style.fontSize = '14px';
-    shinyButton.style.borderRadius = '6px';
-    shinyButton.style.border = '1px solid #ccc';
-    shinyButton.style.background = '#fff';
     buttonContainer.appendChild(shinyButton);
 
     shinyButton.addEventListener('click', () => {
