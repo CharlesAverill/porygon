@@ -2,9 +2,11 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import porygonUrl from '../static/porygon.glb?url';
-import { sceneSetup } from './scene';
+import { sceneSetup, defaultMarkerOpacity } from './scene';
+import { Porygon } from './porygon.js';
+import { AnimationStateMachine, IDLE, WALK, HAPPY, HATE, DAMAGE, TACKLE, SPECIAL } from './states.js';
 
-const [scene, camera, renderer] = sceneSetup();
+const [scene, camera, renderer, groundPlane, clickMarker] = sceneSetup();
 
 // Controls
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -28,6 +30,8 @@ function setupShiny() {
   shinyButton.click();
 }
 
+let porygon;
+
 // Load model
 loader.load(
   porygonUrl,
@@ -50,6 +54,16 @@ loader.load(
     model.children = model.children.filter(c => c.name !== "ShinyMaterials");
 
     mixer = new THREE.AnimationMixer(model);
+
+    // Get rid of motion during walk animation
+    gltf.animations.forEach((clip) => {
+      if (clip.name.toLowerCase().includes('walk')) {
+        clip.tracks = clip.tracks.filter(track => {
+          // Remove tracks that move the armature or root bone
+          return !track.name.match(/\.position$/);
+        });
+      }
+    });
 
     // Populate buttons
     gltf.animations.forEach((clip) => {
@@ -122,18 +136,111 @@ loader.load(
 
     controls.target.set(0, 0, 0);
     controls.update();
+
+    porygon = new Porygon(model, mixer, actions);
   },
   undefined,
   (error) => console.error(error)
 );
 
+// --- Raycasting setup ---
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+let isDragging = false;
+
+window.addEventListener('mousedown', () => {
+  isDragging = false;
+});
+
+window.addEventListener('mousemove', () => {
+  isDragging = true;
+});
+
+window.addEventListener('mouseup', (event) => {
+  if (isDragging) return; // Ignore click+drag
+
+  // Ignore clicks on UI buttons
+  if (event.target.tagName.toLowerCase() === 'button') return;
+
+  // Get normalized device coordinates (-1 to +1)
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+
+  // Update the raycaster from camera and mouse
+  raycaster.setFromCamera(mouse, camera);
+
+  if (porygon && porygon.model) {
+    const intersects = raycaster.intersectObject(porygon.model, true);
+    if (intersects.length > 0) {
+      porygon.onClick();
+      return;
+    }
+  }
+
+  // Intersect with the y=0 plane
+  const intersectionPoint = new THREE.Vector3();
+  raycaster.ray.intersectPlane(groundPlane, intersectionPoint);
+
+  if (intersectionPoint) {
+    clickMarker.position.copy(intersectionPoint);
+    clickMarker.visible = true;
+    clickMarker.material.opacity = defaultMarkerOpacity;
+    console.log("Clicked world point:", intersectionPoint);
+    if (porygon) {
+      porygon.runToPos(intersectionPoint);
+    }
+  }
+});
+
 // Clock and animation loop
 const clock = new THREE.Clock();
+const CAMERA_FOLLOW_SPEED = 1.5;     // how quickly the camera catches up
+const CAMERA_THRESHOLD = 10;          // start following when farther than this
+const CAMERA_OFFSET = new THREE.Vector3(0, 10, 20); // relative position behind and above Porygon
+
+let userIsControlling = false;
+let userStopTimeout = null;
+
+controls.addEventListener('start', () => {
+  userIsControlling = true;
+  if (userStopTimeout) {
+    clearTimeout(userStopTimeout);
+    userStopTimeout = null;
+  }
+});
+
+controls.addEventListener('end', () => {
+  if (userStopTimeout) clearTimeout(userStopTimeout);
+  userStopTimeout = setTimeout(() => {
+    userIsControlling = false;
+  }, 5000); // 5 seconds after user stops interacting
+});
 
 function animate() {
   requestAnimationFrame(animate);
   const delta = clock.getDelta();
+
   if (mixer) mixer.update(delta);
+
+  if (porygon) {
+    porygon.update(delta);
+    controls.target.copy(porygon.position);
+    if (porygon.asm.current === IDLE && clickMarker.visible) {
+      clickMarker.material.opacity = Math.max(0, clickMarker.material.opacity - delta * 0.5);
+      if (clickMarker.material.opacity <= 0) {
+        clickMarker.visible = false;
+        clickMarker.material.opacity = defaultMarkerOpacity;
+      }
+    }
+
+    const desiredCameraPos = new THREE.Vector3().copy(porygon.position).add(CAMERA_OFFSET);
+    const dist = camera.position.distanceTo(desiredCameraPos);
+    if (!userIsControlling && dist > CAMERA_THRESHOLD) {
+      camera.position.lerp(desiredCameraPos, delta * CAMERA_FOLLOW_SPEED);
+    }
+    camera.lookAt(porygon.position);
+  }
   controls.update();
   renderer.render(scene, camera);
 }
@@ -145,3 +252,36 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
+
+// Create an FPS counter element
+const fpsCounter = document.createElement('div');
+fpsCounter.style.position = 'fixed';
+fpsCounter.style.top = '10px';
+fpsCounter.style.right = '10px';
+fpsCounter.style.padding = '5px 10px';
+fpsCounter.style.background = 'rgba(0, 0, 0, 0.5)';
+fpsCounter.style.color = 'white';
+fpsCounter.style.fontFamily = 'monospace';
+fpsCounter.style.fontSize = '14px';
+fpsCounter.style.zIndex = '1000';
+document.body.appendChild(fpsCounter);
+
+let lastFrameTime = performance.now();
+let frames = 0;
+let fps = 0;
+
+function updateFPS() {
+  const now = performance.now();
+  frames++;
+
+  if (now - lastFrameTime >= 1000) {
+    fps = frames;
+    frames = 0;
+    lastFrameTime = now;
+    fpsCounter.textContent = `FPS: ${fps}`;
+  }
+
+  requestAnimationFrame(updateFPS);
+}
+
+updateFPS();

@@ -8,6 +8,8 @@ export function setLightColors(d1, d2, h) {
     hemiLight.color = new THREE.Color(h);
 }
 
+export const defaultMarkerOpacity = 0.6;
+
 export function sceneSetup() {
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0xffffff);
@@ -33,9 +35,20 @@ export function sceneSetup() {
 
     // Ground grid
     const grid = new THREE.GridHelper(10000, 5000, 0xcccccc, 0xeeeeee);
+    const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     grid.material.opacity = 0.6;
     grid.material.transparent = true;
     scene.add(grid);
 
-    return [scene, camera, renderer];
+    // Click marker
+    const circleGeometry = new THREE.CircleGeometry(2, 32);
+    const circleMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.6 });
+    const clickMarker = new THREE.Mesh(circleGeometry, circleMaterial);
+
+    // Rotate so it lies flat on the ground (XZ plane)
+    clickMarker.rotation.x = -Math.PI / 2;
+    clickMarker.visible = false; // hidden until used
+    scene.add(clickMarker);
+
+    return [scene, camera, renderer, groundPlane, clickMarker];
 }

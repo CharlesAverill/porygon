@@ -1,24 +1,20 @@
-export const AnimationState = {
-  IDLE: 'Idle',
-  WALK: 'Walk',
-  RUN: 'Run',
-  ATTACK: 'Attack',
-  HURT: 'Hurt',
-};
+export const [IDLE, WALK, HAPPY, HATE, DAMAGE, TACKLE, SPECIAL] =
+    ["idle", "walk", "happy", "hate", "damage", "tackle", "special"];
 
 export const transitions = {
-  [AnimationState.IDLE]: [AnimationState.WALK, AnimationState.ATTACK],
-  [AnimationState.WALK]: [AnimationState.IDLE, AnimationState.RUN],
-  [AnimationState.RUN]: [AnimationState.WALK],
-  [AnimationState.ATTACK]: [AnimationState.IDLE],
-  [AnimationState.HURT]: [AnimationState.IDLE],
+  [IDLE]: [IDLE, WALK, HATE, HAPPY, DAMAGE, TACKLE],
+  [WALK]: [WALK, IDLE],
+  [HAPPY]: [HAPPY, IDLE],
+  [HATE]: [IDLE],
+  [DAMAGE]: [IDLE],
+  [TACKLE]: [IDLE],
 };
 
 export class AnimationStateMachine {
-  constructor(mixer, actions) {
+  constructor(mixer, actions, defaultAction) {
     this.mixer = mixer;
     this.actions = actions;
-    this.current = null;
+    this.current = defaultAction;
   }
 
   canTransitionTo(next) {
