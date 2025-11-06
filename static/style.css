@@ -26,7 +26,7 @@ button {
 }
 
 button:hover {
-  background: rgba(200,200,200,0.8);
+  background: rgba(200, 200, 200, 0.8);
 }
 
 button:active {
@@ -70,6 +70,7 @@ button:active {
     padding: 8px !important;
     border-radius: 0 !important;
   }
+
   div.animation-buttons button {
     flex: 1 1 30%;
     font-size: 12px;

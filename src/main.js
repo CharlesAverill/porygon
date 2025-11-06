@@ -43,14 +43,14 @@ loader.load(
     let shinyEyeMat;
     let bodyMat;
     let eyeMat;
-    gltf.parser.getDependencies( 'material' ).then( ( materials ) => {
+    gltf.parser.getDependencies('material').then((materials) => {
       shinyBodyMat = materials.find(m => m.name === 'BodyShiny');
       shinyEyeMat = materials.find(m => m.name === 'EyeShiny');
       bodyMat = materials.find(m => m.name === 'BodyTexture');
       eyeMat = materials.find(m => m.name === 'EyeTexture');
 
       setupShiny();
-    } );
+    });
     model.children = model.children.filter(c => c.name !== "ShinyMaterials");
 
     mixer = new THREE.AnimationMixer(model);

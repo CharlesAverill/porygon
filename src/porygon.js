@@ -24,16 +24,25 @@ export class Porygon {
     asm;
     running;
     timeSinceRandWalk;
+    timeSinceHappy;
+    danceCount;
 
     constructor(model, mixer, actions) {
-        this.happiness = 50;
+        this.happiness = (MIN_HAPPINESS + MAX_HAPPINESS) / 2;
         this.position = new THREE.Vector3(0, 0, 0);
         this.target_position = null;
-        this.health = 100;
+        this.health = MAX_HEALTH;
         this.model = model;
         this.asm = new AnimationStateMachine(mixer, actions, IDLE);
         this.running = false;
+
         this.timeSinceRandWalk = 0;
+        this.timeSinceHappy = 0;
+        this.danceCount = 0;
+
+        mixer.addEventListener('loop', (event) => {
+            this.onAnimationFinished();
+        });
     }
 
     updateHappiness(delta) {
@@ -89,21 +98,43 @@ export class Porygon {
 
     updateTimers(delta) {
         this.timeSinceRandWalk += delta;
+        this.timeSinceHappy += delta;
+    }
+
+    randomTransitionCondition(timer, gap, threshold) {
+        return Math.round(timer) >= gap && Math.round(timer) % gap == 0 && Math.random() < threshold;
+    }
+
+    onAnimationFinished() {
+        switch (this.asm.current) {
+            case HAPPY:
+                console.log(this.danceCount);
+                if (++this.danceCount >= 3) {
+                    this.asm.transitionTo(IDLE);
+                    this.danceCount = 0;
+                    this.timeSinceHappy = 0;
+                }
+                break;
+            default:
+                break;
+        }
     }
 
     update(deltaTime) {
         this.updateTimers(deltaTime);
 
-        switch(this.asm.current) {
+        switch (this.asm.current) {
             case IDLE:
                 if (this.target_position && this.position !== this.target_position) {
                     this.asm.transitionTo(WALK, this.running ? 0.25 : 0.5);
-                } else if (this.timeSinceRandWalk > 5 && Math.round(this.timeSinceRandWalk) % 3 == 0 && Math.random() < 0.15) {
+                } else if (this.timeSinceRandWalk > 5 && this.randomTransitionCondition(this.timeSinceRandWalk, 3, 0.15)) {
                     this.walkToPos(selectPosInRadius(this.position, MAX_DISTANCE));
-                }
+                } else if (this.happiness >= MAX_HAPPINESS * 0.85 && this.randomTransitionCondition(this.timeSinceHappy, 10, 0.3)) {
+                    this.asm.transitionTo(HAPPY);
+                } 
                 break;
             case WALK:
-                if(this.target_position && this.position.distanceTo(this.target_position) < 0.1) {
+                if (this.target_position && this.position.distanceTo(this.target_position) < 0.1) {
                     this.position = this.target_position;
                     this.target_position = null;
                     this.asm.transitionTo(IDLE);
