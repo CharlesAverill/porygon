@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 import { clamp } from 'three/src/math/MathUtils.js';
 import { AnimationStateMachine, IDLE, WALK, HAPPY, HATE, DAMAGE, TACKLE, SPECIAL } from './states.js';
+import { globalWarmth } from './scene.js';
+import neutral_icon_url from "../static/images/happiness/neutral.png";
+import happy_icon_url from "../static/images/happiness/happy.png";
+import upset_icon_url from "../static/images/happiness/upset.png";
 
 const [MIN_HAPPINESS, MAX_HAPPINESS] = [0, 100];
 const [MIN_HEALTH, MAX_HEALTH] = [0, 100];
@@ -9,6 +13,71 @@ function selectPosInRadius(origin, radius) {
     let theta = 2 * Math.PI * Math.random();
     let r = radius * Math.sqrt(Math.random());
     return new THREE.Vector3(origin.x + r * Math.cos(theta), origin.y, origin.z + r * Math.sin(theta));
+}
+
+function makeTextTexture(text) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "white";
+    ctx.font = "48px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.needsUpdate = true;
+    return tex;
+}
+
+let imgTextureCache = {};
+let imgLoadingCallbacks = {};  // for requests made before image finishes loading
+
+function makeImgTexture(src, callback) {
+    // If cached texture already exists → return immediately.
+    if (imgTextureCache[src]) {
+        callback(imgTextureCache[src]);
+        return;
+    }
+
+    // If this image is STILL loading → queue the callback.
+    if (imgLoadingCallbacks[src]) {
+        imgLoadingCallbacks[src].push(callback);
+        return;
+    }
+
+    // First request for this image → initialize callback queue
+    imgLoadingCallbacks[src] = [callback];
+
+    const img = new Image();
+    img.src = src;
+    img.crossOrigin = "anonymous";
+
+    img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.needsUpdate = true;
+
+        // Store in cache
+        imgTextureCache[src] = tex;
+
+        // Run ALL queued callbacks
+        for (const cb of imgLoadingCallbacks[src]) {
+            cb(tex);
+        }
+
+        // Cleanup loading queue
+        delete imgLoadingCallbacks[src];
+    };
 }
 
 const RUN_SPEED = 4;
@@ -35,18 +104,37 @@ export class Porygon {
         this.model = model;
         this.asm = new AnimationStateMachine(mixer, actions, IDLE);
         this.running = false;
+        this.preferredWarmth = Math.random();
+        console.log("Preferred warmth: " + this.preferredWarmth);
 
         this.timeSinceRandWalk = 0;
         this.timeSinceHappy = 0;
         this.danceCount = 0;
+        this.timeSinceUpdatedHappiness = 0;
 
+        // --- Create happiness billboard ---
+        const spriteMat = new THREE.SpriteMaterial({
+            // temporary text, updated onClick
+            map: makeTextTexture(""),
+            transparent: true
+        });
+
+        this.happinessSprite = new THREE.Sprite(spriteMat);
+        this.happinessSprite.visible = false;
+        this.happinessSprite.material.opacity = 1.;
+        this.happinessSprite.scale.multiplyScalar(2);
+
+        this.model.add(this.happinessSprite);
+        this.happinessSprite.position.set(0, 7, 0);
+        
         mixer.addEventListener('loop', (event) => {
             this.onAnimationFinished();
         });
     }
 
-    updateHappiness(delta) {
+    updateHappinessValue(delta) {
         this.happiness = clamp(this.happiness + delta, MIN_HAPPINESS, MAX_HAPPINESS);
+        console.log(delta > 0 ? "I'm getting happier!" : "I'm getting sadder...");
     }
 
     updateHealth(delta) {
@@ -93,12 +181,34 @@ export class Porygon {
     }
 
     onClick() {
-        console.log("Clicked!");
+        const iconUrl = 
+            this.happiness < (MAX_HAPPINESS - MIN_HAPPINESS) / 3 ? upset_icon_url :
+            (this.happiness < 2 * (MAX_HAPPINESS - MIN_HAPPINESS) / 3 ? neutral_icon_url :
+            happy_icon_url);
+
+        makeImgTexture(iconUrl, (tex) => {
+            this.happinessSprite.material.map = tex;
+            this.happinessSprite.material.needsUpdate = true;
+            this.happinessSprite.visible = true;
+        });
+
+        this._billboardTimer = 2.0;
     }
+
 
     updateTimers(delta) {
         this.timeSinceRandWalk += delta;
         this.timeSinceHappy += delta;
+        this.timeSinceUpdatedHappiness += delta;
+
+        if (this._billboardTimer !== undefined) {
+            this._billboardTimer -= delta;
+
+            if (this._billboardTimer <= 0) {
+                this.happinessSprite.visible = false;
+                this._billboardTimer = undefined;
+            }
+        }
     }
 
     randomTransitionCondition(timer, gap, threshold) {
@@ -109,19 +219,46 @@ export class Porygon {
         switch (this.asm.current) {
             case HAPPY:
                 console.log(this.danceCount);
-                if (++this.danceCount >= 3) {
+                if (++this.danceCount >= 1) {
                     this.asm.transitionTo(IDLE);
                     this.danceCount = 0;
                     this.timeSinceHappy = 0;
                 }
                 break;
+            case HATE:
+                this.asm.transitionTo(IDLE);
             default:
                 break;
         }
     }
 
+    updateHappiness(deltaTime) {
+        let delta = 0;
+        // warmth
+        const warmDist = Math.abs(globalWarmth - this.preferredWarmth);
+        // warmDist = 0     -> +0.3
+        // warmDist < 0.3   -> 0
+        // warmDist > 0.3   -> negative
+        delta += (0.3 - warmDist) * deltaTime;
+
+        this.updateHappinessValue(delta);
+        console.log(delta);
+        if (Math.abs(delta) > 0.1 * deltaTime) {
+            if (delta > 0) {
+                this.asm.transitionTo(HAPPY);
+            } else if (delta < 0) {
+                this.asm.transitionTo(HATE);
+            }
+        }
+    }
+
     update(deltaTime) {
         this.updateTimers(deltaTime);
+        if (this.timeSinceUpdatedHappiness > 10) {
+            this.updateHappiness(deltaTime);
+            this.timeSinceUpdatedHappiness = 0;
+        }
+
 
         switch (this.asm.current) {
             case IDLE:

@@ -2,9 +2,11 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import porygonUrl from '../static/porygon.glb?url';
-import { sceneSetup, defaultMarkerOpacity } from './scene';
+import { sceneSetup, defaultMarkerOpacity, setWarmth, globalWarmth, MEDIAN_WARMTH, WARMTH_DRIFT_SPEED } from './scene';
 import { Porygon } from './porygon.js';
 import { AnimationStateMachine, IDLE, WALK, HAPPY, HATE, DAMAGE, TACKLE, SPECIAL } from './states.js';
+import ice_url from '../static/images/ice.png';
+import fire_url from '../static/images/fire.png';
 
 const [scene, camera, renderer, groundPlane, clickMarker] = sceneSetup();
 
@@ -201,6 +203,9 @@ const CAMERA_OFFSET = new THREE.Vector3(0, 10, 20); // relative position behind 
 
 let userIsControlling = false;
 let userStopTimeout = null;
+let userIsControllingLight = false;
+let userLightTimeout = null;
+let warmthSlider;
 
 controls.addEventListener('start', () => {
   userIsControlling = true;
@@ -240,7 +245,27 @@ function animate() {
       camera.position.lerp(desiredCameraPos, delta * CAMERA_FOLLOW_SPEED);
     }
     camera.lookAt(porygon.position);
+
+    const MIN_CAMERA_Y = 1;   // you can set this higher if you want
+    if (camera.position.y < MIN_CAMERA_Y) {
+        camera.position.y = MIN_CAMERA_Y;
+    }
   }
+
+  // DRIFT LIGHT WARMTH
+  if (warmthSlider) {
+    if (!userIsControllingLight) {
+        let diff = MEDIAN_WARMTH - globalWarmth;
+        if (Math.abs(diff) > 0.0001) {
+            const newW = globalWarmth + diff * delta * WARMTH_DRIFT_SPEED; 
+            setWarmth(newW);
+        }
+    }
+
+    // Sync slider to real warmth
+    warmthSlider.value = Math.round(globalWarmth * 100);
+  }
+
   controls.update();
   renderer.render(scene, camera);
 }
@@ -285,3 +310,57 @@ function updateFPS() {
 }
 
 updateFPS();
+
+// --- Warmth Slider UI ---
+const warmthContainer = document.createElement('div');
+warmthContainer.style.position = 'fixed';
+warmthContainer.style.top = '10px';
+warmthContainer.style.left = '50%';
+warmthContainer.style.transform = 'translateX(-50%)';
+warmthContainer.style.padding = '8px 12px';
+warmthContainer.style.background = 'rgba(255,255,255,0.8)';
+warmthContainer.style.borderRadius = '8px';
+warmthContainer.style.zIndex = '2000';
+warmthContainer.style.fontFamily = 'sans-serif';
+
+// >>> Add flexbox for vertical centering
+warmthContainer.style.display = 'flex';
+warmthContainer.style.alignItems = 'center';
+
+// left icon
+const iceImg = document.createElement('img');
+iceImg.src = ice_url;
+iceImg.style.height = '20px';
+iceImg.style.marginRight = '6px';
+
+// slider
+warmthSlider = document.createElement('input');
+warmthSlider.type = 'range';
+warmthSlider.min = 0;
+warmthSlider.max = 100;
+warmthSlider.value = globalWarmth * 100;
+warmthSlider.style.margin = '0 6px';
+
+// >>> Right fire icon
+const fireImg = document.createElement('img');
+fireImg.src = fire_url;     // <-- define this same as ice_url
+fireImg.style.height = '20px';
+fireImg.style.marginLeft = '6px';
+
+warmthContainer.appendChild(iceImg);
+warmthContainer.appendChild(warmthSlider);
+warmthContainer.appendChild(fireImg);
+document.body.appendChild(warmthContainer);
+
+
+warmthSlider.addEventListener('input', () => {
+    setWarmth(warmthSlider.value / 100);
+    userIsControllingLight = true;
+});
+
+warmthSlider.addEventListener('change', () => {
+    if (userLightTimeout) clearTimeout(userLightTimeout);
+    userLightTimeout = setTimeout(() => {
+        userIsControllingLight = false;
+    }, 3000);
+});

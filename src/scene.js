@@ -1,17 +1,34 @@
 import * as THREE from 'three';
 
-let directionalLight1, directionalLight2, hemiLight;
+export let globalWarmth = 0.5; // 0 = cold/blue, 1 = warm/orange
+export const MEDIAN_WARMTH = 0.5;
+export const WARMTH_DRIFT_SPEED = 0.01; // per second
 
-export function setLightColors(d1, d2, h) {
-    directionalLight1.color = new THREE.Color(d1);
-    directionalLight2.color = new THREE.Color(d2);
-    hemiLight.color = new THREE.Color(h);
+export function warmthToColor(warmth) {
+    // cold = #66aaff, warm = #ffbb66
+    const cold = new THREE.Color(0x66aaff);
+    const warmC = new THREE.Color(0xffbb66);
+    return cold.lerp(warmC, THREE.MathUtils.clamp(warmth, 0, 1));
+}
+
+let directionalLight1, directionalLight2, hemiLight, scene;
+
+export function setWarmth(w) {
+    globalWarmth = THREE.MathUtils.clamp(w, 0, 1);
+    const c = warmthToColor(globalWarmth);
+
+    if (directionalLight1) directionalLight1.color.copy(c);
+    if (directionalLight2) directionalLight2.color.copy(c);
+    if (hemiLight) hemiLight.color.copy(c);
+
+    if (scene)
+        scene.background = c;
 }
 
 export const defaultMarkerOpacity = 0.6;
 
 export function sceneSetup() {
-    const scene = new THREE.Scene();
+    scene = new THREE.Scene();
     scene.background = new THREE.Color(0xffffff);
 
     // Camera
@@ -49,6 +66,8 @@ export function sceneSetup() {
     clickMarker.rotation.x = -Math.PI / 2;
     clickMarker.visible = false; // hidden until used
     scene.add(clickMarker);
+
+    setWarmth(globalWarmth);
 
     return [scene, camera, renderer, groundPlane, clickMarker];
 }
